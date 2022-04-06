@@ -309,6 +309,14 @@ func storeProject(ctx echo.Context) (err error) {
 		return
 	}
 
+	q = "update cv_project_dok set id_project = @P1 where id_project is null"
+	_, err = db.Exec(q, sql.Named("P1", id))
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
 	res := &Response{
 		Status:  true,
 		Message: "OK",
