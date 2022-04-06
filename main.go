@@ -147,6 +147,7 @@ func main() {
 	authRoutes.POST("/user", Update)
 	authRoutes.POST("/user-upload", uploadImage)
 	authRoutes.POST("/project-simpan", storeProject)
+	authRoutes.POST("/project-upload", uploadImageProject)
 
 	server.Logger.Fatal(server.Start(":" + viper.GetString("server.port")))
 }
@@ -278,6 +279,120 @@ func GenerateProject() string {
 }
 
 // HANDLERS //
+func uploadImageProject(ctx echo.Context) (err error) {
+	var id = ctx.FormValue("id")
+	var flag = ctx.FormValue("flag")
+	var no = ctx.FormValue("no")
+	var filePath *string
+
+	var where = "and id_project is null"
+	if id != "" && len(id) > 0 {
+		where = fmt.Sprintln("and id_project =", id)
+	}
+
+	// CONNECT KE DB
+	db, err := config.Connect()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	defer db.Close()
+
+	q := fmt.Sprintln("select file_path from cv_project_dok where no_urut = @P1", where)
+
+	err = db.QueryRow(q, sql.Named("P1", no)).Scan(&filePath)
+
+	if err != nil && err != sql.ErrNoRows {
+		fmt.Println(err.Error())
+		return
+	}
+
+	file, header, _ := ctx.Request().FormFile("file")
+	defer file.Close()
+
+	buff := bytes.NewBuffer(nil)
+
+	_, err = io.Copy(buff, file)
+
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+
+	check := CheckIsImage(buff.Bytes())
+
+	if check == "" {
+		res := &Response{
+			Status:  false,
+			Message: "File tidak valid",
+		}
+
+		return ctx.JSON(http.StatusInternalServerError, res)
+	}
+
+	session := ctx.Get("session").(*session.Session)
+	uploader := s3manager.NewUploader(session)
+
+	bucket := viper.GetString("aws.bucket")
+	fileName := fmt.Sprintf("dev-%s", header.Filename)
+
+	if filePath != nil {
+		// DELETE FILE FROM S3
+		svc := s3.New(session)
+
+		_, err := svc.DeleteObject(&s3.DeleteObjectInput{
+			Bucket: &bucket,
+			Key:    filePath,
+		})
+
+		if err != nil {
+			return err
+		}
+
+		err = svc.WaitUntilObjectNotExists(&s3.HeadObjectInput{
+			Bucket: &bucket,
+			Key:    filePath,
+		})
+
+		if err != nil {
+			return err
+		}
+	}
+
+	//UPLOAD TO S3
+	_, err = uploader.Upload(&s3manager.UploadInput{
+		Bucket: aws.String(bucket),
+		ACL:    aws.String("bucket-owner-full-control"),
+		Key:    aws.String(fileName),
+		Body:   bytes.NewReader(buff.Bytes()),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if err == sql.ErrNoRows {
+		q = "insert into cv_project_dok (id_project, flag_thumb, file_path, no_urut) values (@P1, @P2, @P3, @P4)"
+		_, err = db.Exec(q, sql.Named("P1", id), sql.Named("P2", fileName), sql.Named("P3", flag), sql.Named("P4", no))
+	} else {
+		q = fmt.Sprintln("update cv_project_dok set file_path = @P1 where no_urut = @P2", where)
+		_, err = db.Exec(q, sql.Named("P1", fileName), sql.Named("P2", no))
+	}
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	res := &Response{
+		Status:  true,
+		Message: "OK",
+	}
+
+	return ctx.JSON(http.StatusOK, res)
+}
+
 func storeProject(ctx echo.Context) (err error) {
 	req := new(DataProject)
 
