@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -145,6 +146,7 @@ func main() {
 	authRoutes.GET("/projects", IndexProject)
 	authRoutes.POST("/user", Update)
 	authRoutes.POST("/user-upload", uploadImage)
+	authRoutes.POST("/project-simpan", storeProject)
 
 	server.Logger.Fatal(server.Start(":" + viper.GetString("server.port")))
 }
@@ -242,7 +244,79 @@ func CheckIsImage(incipit []byte) string {
 	return ""
 }
 
+func GenerateProject() string {
+	prefix := "PRJ"
+
+	// CONNECT KE DB
+	db, err := config.Connect()
+
+	if err != nil {
+		defer panic(err.Error())
+	}
+
+	defer db.Close()
+
+	var id *string
+	q := "select top 1 id from cv_project order by id desc"
+
+	err = db.QueryRow(q).Scan(&id)
+
+	if err != nil && err != sql.ErrNoRows {
+		defer panic(err.Error())
+	}
+
+	if err == sql.ErrNoRows {
+		return fmt.Sprintf("%s1", prefix)
+	}
+
+	idNum := (*id)[3:]
+
+	num, _ := strconv.ParseInt(idNum, 0, 8)
+	num = num + 1
+
+	return fmt.Sprintf("%s%o", prefix, num)
+}
+
 // HANDLERS //
+func storeProject(ctx echo.Context) (err error) {
+	req := new(Dataproject)
+
+	if err := ctx.Bind(req); err != nil {
+		return err
+	}
+
+	if err := ctx.Validate(req); err != nil {
+		return err
+	}
+
+	// CONNECT KE DB
+	db, err := config.Connect()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	defer db.Close()
+
+	id := GenerateProject()
+
+	q := "insert into cv_project (id, nama, deskripsi, pic) values (@P1, @P2, @P3, @P4)"
+	_, err = db.Exec(q, sql.Named("P1", id), sql.Named("P2", req.Nama), sql.Named("P3", req.Deskripsi), sql.Named("P4", req.PIC))
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	res := &Response{
+		Status:  true,
+		Message: "OK",
+	}
+
+	return ctx.JSON(http.StatusOK, res)
+}
+
 func IndexProject(ctx echo.Context) (err error) {
 	// CONNECT KE DB
 	db, err := config.Connect()
@@ -254,7 +328,7 @@ func IndexProject(ctx echo.Context) (err error) {
 
 	defer db.Close()
 
-	q := "select id, nama, deskripsi, pic from cv_project"
+	q := "select id, nama, deskripsi, pic from cv_project order by id desc"
 
 	rows, err := db.Query(q)
 
