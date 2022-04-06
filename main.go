@@ -64,6 +64,12 @@ type (
 		Alamat  string `json:"alamat" validate:"required"`
 		Jabatan string `json:"jabatan" validate:"required,max=100"`
 	}
+	Dataproject struct {
+		ID        string `json:"id"`
+		Nama      string `json:"nama" validate:"required,max=200"`
+		Deskripsi string `json:"deskripsi" validate:"required"`
+		PIC       string `json:"pic" validate:"required,max=20"`
+	}
 )
 
 func main() {
@@ -136,6 +142,7 @@ func main() {
 
 	authRoutes.GET("/user", Show)
 	authRoutes.GET("/user-image", showImage)
+	authRoutes.GET("/projects", IndexProject)
 	authRoutes.POST("/user", Update)
 	authRoutes.POST("/user-upload", uploadImage)
 
@@ -236,6 +243,56 @@ func CheckIsImage(incipit []byte) string {
 }
 
 // HANDLERS //
+func IndexProject(ctx echo.Context) (err error) {
+	// CONNECT KE DB
+	db, err := config.Connect()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	defer db.Close()
+
+	q := "select id, nama, deskripsi, pic from cv_project"
+
+	rows, err := db.Query(q)
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var data []Dataproject
+
+	for rows.Next() {
+		var each = Dataproject{}
+		var err = rows.Scan(&each.ID, &each.Nama, &each.Deskripsi, &each.PIC)
+
+		if err != nil {
+			defer panic(err.Error())
+		}
+
+		data = append(data, each)
+	}
+
+	err = rows.Err()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	res := &ResponseData{
+		Status: true,
+		Data:   data,
+	}
+
+	return ctx.JSON(http.StatusOK, res)
+
+}
+
 func showImage(ctx echo.Context) (err error) {
 	// CONNECT KE DB
 	db, err := config.Connect()
