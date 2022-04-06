@@ -65,7 +65,7 @@ type (
 		Alamat  string `json:"alamat" validate:"required"`
 		Jabatan string `json:"jabatan" validate:"required,max=100"`
 	}
-	Dataproject struct {
+	DataProject struct {
 		ID        string `json:"id"`
 		Nama      string `json:"nama" validate:"required,max=200"`
 		Deskripsi string `json:"deskripsi" validate:"required"`
@@ -279,7 +279,7 @@ func GenerateProject() string {
 
 // HANDLERS //
 func storeProject(ctx echo.Context) (err error) {
-	req := new(Dataproject)
+	req := new(DataProject)
 
 	if err := ctx.Bind(req); err != nil {
 		return err
@@ -338,10 +338,10 @@ func IndexProject(ctx echo.Context) (err error) {
 	}
 	defer rows.Close()
 
-	var data []Dataproject
+	var data []DataProject
 
 	for rows.Next() {
-		var each = Dataproject{}
+		var each = DataProject{}
 		var err = rows.Scan(&each.ID, &each.Nama, &each.Deskripsi, &each.PIC)
 
 		if err != nil {
