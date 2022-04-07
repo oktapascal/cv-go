@@ -159,6 +159,7 @@ func main() {
 	authRoutes.POST("/project-upload", UpdateProject)
 	authRoutes.POST("/project-upload", UploadImageProject)
 	authRoutes.DELETE("/project-upload", DeleteImage)
+	authRoutes.DELETE("/project", DeleteProject)
 
 	server.Logger.Fatal(server.Start(":" + viper.GetString("server.port")))
 }
