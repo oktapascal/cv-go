@@ -761,8 +761,6 @@ func ShowImage(ctx echo.Context) (err error) {
 	data := ctx.Request().Context().Value("user").(jwt.MapClaims)
 	var filePath *string
 
-	buff := aws.WriteAtBuffer{}
-
 	q := `select foto
 	from cv_user
 	where nik = @P1`
@@ -774,23 +772,14 @@ func ShowImage(ctx echo.Context) (err error) {
 		return
 	}
 
+	var file string
 	if filePath != nil {
-		// SHOW FILE FROM S3
-		session := ctx.Get("session").(*session.Session)
-		downloader := s3manager.NewDownloader(session)
-		_, err := downloader.Download(&buff, &s3.GetObjectInput{
-			Bucket: &bucket,
-			Key:    filePath,
-		})
-
-		if err != nil {
-			return err
-		}
+		file = "https://" + bucket + "." + "s3-" + AWS_REGION + ".amazonaws.com/" + *filePath
 	}
 
 	res := &ResponseData{
 		Status: true,
-		Data:   buff.Bytes(),
+		Data:   file,
 	}
 
 	return ctx.JSON(http.StatusOK, res)

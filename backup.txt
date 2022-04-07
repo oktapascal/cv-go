@@ -1,0 +1,50 @@
+func ShowImage(ctx echo.Context) (err error) {
+	// CONNECT KE DB
+	db, err := config.Connect()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	defer db.Close()
+
+	bucket := viper.GetString("aws.bucket")
+
+	data := ctx.Request().Context().Value("user").(jwt.MapClaims)
+	var filePath *string
+
+	buff := aws.WriteAtBuffer{}
+
+	q := `select foto
+	from cv_user
+	where nik = @P1`
+
+	err = db.QueryRow(q, sql.Named("P1", data["nik"])).Scan(&filePath)
+
+	if err != nil && err != sql.ErrNoRows {
+		fmt.Println(err.Error())
+		return
+	}
+
+	if filePath != nil {
+		// SHOW FILE FROM S3
+		session := ctx.Get("session").(*session.Session)
+		downloader := s3manager.NewDownloader(session)
+		_, err := downloader.Download(&buff, &s3.GetObjectInput{
+			Bucket: &bucket,
+			Key:    filePath,
+		})
+
+		if err != nil {
+			return err
+		}
+	}
+
+	res := &ResponseData{
+		Status: true,
+		Data:   buff.Bytes(),
+	}
+
+	return ctx.JSON(http.StatusOK, res)
+}
