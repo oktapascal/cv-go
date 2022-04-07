@@ -76,6 +76,10 @@ type (
 		PIC       string `json:"pic" validate:"required,max=20"`
 		Images    []ImageProject
 	}
+	DeleteProjectImage struct {
+		ID string `json:"id"`
+		No string `json:"no" validate:"required"`
+	}
 )
 
 func main() {
@@ -147,13 +151,14 @@ func main() {
 	authRoutes.Use(middleware.JWTWithConfig(jwtConfig))
 
 	authRoutes.GET("/user", Show)
-	authRoutes.GET("/user-image", showImage)
+	authRoutes.GET("/user-image", ShowImage)
 	authRoutes.GET("/projects", IndexProject)
 	authRoutes.POST("/user", Update)
 	authRoutes.POST("/user-upload", uploadImage)
-	authRoutes.POST("/project-simpan", storeProject)
-	authRoutes.POST("/project-upload", updateProject)
-	authRoutes.POST("/project-upload", uploadImageProject)
+	authRoutes.POST("/project-simpan", StoreProject)
+	authRoutes.POST("/project-upload", UpdateProject)
+	authRoutes.POST("/project-upload", UploadImageProject)
+	authRoutes.DELETE("/project-upload", DeleteImage)
 
 	server.Logger.Fatal(server.Start(":" + viper.GetString("server.port")))
 }
@@ -285,7 +290,185 @@ func GenerateProject() string {
 }
 
 // HANDLERS //
-func uploadImageProject(ctx echo.Context) (err error) {
+func DeleteProject(ctx echo.Context) (err error) {
+	var id = ctx.Param("id")
+
+	// CONNECT KE DB
+	db, err := config.Connect()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	defer db.Close()
+	q := "select file_path from cv_project_dok where id_project = @P1"
+
+	rows, err := db.Query(q, sql.Named("P1", id))
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var image []*string
+
+	for rows.Next() {
+		var filePath *string
+		var err = rows.Scan(&filePath)
+
+		if err != nil {
+			defer panic(err.Error())
+		}
+
+		image = append(image, filePath)
+	}
+
+	err = rows.Err()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	if len(image) > 0 {
+		session := ctx.Get("session").(*session.Session)
+		bucket := viper.GetString("aws.bucket")
+
+		for _, img := range image {
+			// DELETE FILE FROM S3
+			svc := s3.New(session)
+
+			_, err := svc.DeleteObject(&s3.DeleteObjectInput{
+				Bucket: &bucket,
+				Key:    img,
+			})
+
+			if err != nil {
+				return err
+			}
+
+			err = svc.WaitUntilObjectNotExists(&s3.HeadObjectInput{
+				Bucket: &bucket,
+				Key:    img,
+			})
+
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	q = "delete from cv_project where id = @P1"
+
+	_, err = db.Exec(q, sql.Named("P1", id))
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	q = "delete from cv_project_dok where id_project = @P1"
+
+	_, err = db.Exec(q, sql.Named("P1", id))
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	res := &Response{
+		Status:  true,
+		Message: "OK",
+	}
+
+	return ctx.JSON(http.StatusOK, res)
+}
+
+func DeleteImage(ctx echo.Context) (err error) {
+	req := new(DeleteProjectImage)
+
+	if err := ctx.Bind(req); err != nil {
+		return err
+	}
+
+	if err := ctx.Validate(req); err != nil {
+		return err
+	}
+
+	var id = req.ID
+	var no = req.No
+	var filePath *string
+
+	var where = "and id_project = ''"
+	if id != "" && len(id) > 0 {
+		where = fmt.Sprintln("and id_project =", id)
+	}
+
+	// CONNECT KE DB
+	db, err := config.Connect()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	defer db.Close()
+
+	q := fmt.Sprintln("select file_path from cv_project_dok where no_urut = @P1", where)
+
+	err = db.QueryRow(q, sql.Named("P1", no)).Scan(&filePath)
+
+	if err != nil && err != sql.ErrNoRows {
+		fmt.Println(err.Error())
+		return
+	}
+
+	session := ctx.Get("session").(*session.Session)
+	bucket := viper.GetString("aws.bucket")
+
+	if filePath != nil {
+		// DELETE FILE FROM S3
+		svc := s3.New(session)
+
+		_, err := svc.DeleteObject(&s3.DeleteObjectInput{
+			Bucket: &bucket,
+			Key:    filePath,
+		})
+
+		if err != nil {
+			return err
+		}
+
+		err = svc.WaitUntilObjectNotExists(&s3.HeadObjectInput{
+			Bucket: &bucket,
+			Key:    filePath,
+		})
+
+		if err != nil {
+			return err
+		}
+	}
+
+	q = fmt.Sprintln("delete from cv_project_dok where no_urut = @P1", where)
+
+	_, err = db.Exec(q, sql.Named("P1", req.No))
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	res := &Response{
+		Status:  true,
+		Message: "OK",
+	}
+
+	return ctx.JSON(http.StatusOK, res)
+}
+
+func UploadImageProject(ctx echo.Context) (err error) {
 	var id = ctx.FormValue("id")
 	var flag = ctx.FormValue("flag")
 	var no = ctx.FormValue("no")
@@ -400,7 +583,7 @@ func uploadImageProject(ctx echo.Context) (err error) {
 	return ctx.JSON(http.StatusOK, res)
 }
 
-func updateProject(ctx echo.Context) (err error) {
+func UpdateProject(ctx echo.Context) (err error) {
 	req := new(DataProject)
 
 	if err := ctx.Bind(req); err != nil {
@@ -449,7 +632,7 @@ func updateProject(ctx echo.Context) (err error) {
 	return ctx.JSON(http.StatusOK, res)
 }
 
-func storeProject(ctx echo.Context) (err error) {
+func StoreProject(ctx echo.Context) (err error) {
 	req := new(DataProject)
 
 	if err := ctx.Bind(req); err != nil {
@@ -550,7 +733,7 @@ func IndexProject(ctx echo.Context) (err error) {
 
 }
 
-func showImage(ctx echo.Context) (err error) {
+func ShowImage(ctx echo.Context) (err error) {
 	// CONNECT KE DB
 	db, err := config.Connect()
 
