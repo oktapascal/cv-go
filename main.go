@@ -130,6 +130,7 @@ func main() {
 
 	// LOGIN
 	server.POST("/login", Login)
+	server.POST("/logout", Logout)
 	// GROUP ROUTES
 	authRoutes := server.Group("/api")
 
@@ -153,6 +154,7 @@ func main() {
 	authRoutes.GET("/user", Show)
 	authRoutes.GET("/user-image", ShowImage)
 	authRoutes.GET("/projects", IndexProject)
+	authRoutes.GET("/check", CheckToken)
 	authRoutes.POST("/user", Update)
 	authRoutes.POST("/user-upload", uploadImage)
 	authRoutes.POST("/project-simpan", StoreProject)
@@ -291,6 +293,15 @@ func GenerateProject() string {
 }
 
 // HANDLERS //
+func CheckToken(ctx echo.Context) (err error) {
+	res := &Response{
+		Status:  true,
+		Message: "OK",
+	}
+
+	return ctx.JSON(http.StatusOK, res)
+}
+
 func DeleteProject(ctx echo.Context) (err error) {
 	var id = ctx.Param("id")
 
@@ -963,6 +974,22 @@ func Show(ctx echo.Context) (err error) {
 	return ctx.JSON(http.StatusOK, res)
 }
 
+func Logout(ctx echo.Context) (err error) {
+	cookie := new(http.Cookie)
+	cookie.Name = "access-token"
+	cookie.HttpOnly = true
+	cookie.Value = ""
+	cookie.Expires = time.Unix(0, 0)
+	ctx.SetCookie(cookie)
+
+	res := &Response{
+		Status:  true,
+		Message: "OK",
+	}
+
+	return ctx.JSON(http.StatusOK, res)
+}
+
 func Login(ctx echo.Context) (err error) {
 	req := new(User)
 
@@ -1034,6 +1061,7 @@ func Login(ctx echo.Context) (err error) {
 
 	cookie := new(http.Cookie)
 	cookie.Name = "access-token"
+	cookie.HttpOnly = true
 	cookie.Value = _token
 	cookie.Expires = time.Now().Add(time.Hour * 2)
 	ctx.SetCookie(cookie)
