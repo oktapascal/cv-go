@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -153,6 +152,7 @@ func main() {
 	authRoutes.POST("/user", Update)
 	authRoutes.POST("/user-upload", uploadImage)
 	authRoutes.POST("/project-simpan", storeProject)
+	authRoutes.POST("/project-upload", updateProject)
 	authRoutes.POST("/project-upload", uploadImageProject)
 
 	server.Logger.Fatal(server.Start(":" + viper.GetString("server.port")))
@@ -284,27 +284,6 @@ func GenerateProject() string {
 	return fmt.Sprintf("%s%o", prefix, num)
 }
 
-func ParseFormCollection(r *http.Request, typeName string) []map[string]string {
-	var result []map[string]string
-	r.ParseForm()
-	for key, values := range r.Form {
-		re := regexp.MustCompile(typeName + "\\[([0-9]+)\\]\\[([a-zA-Z]+)\\]")
-		matches := re.FindStringSubmatch(key)
-
-		if len(matches) >= 3 {
-
-			index, _ := strconv.Atoi(matches[1])
-
-			for index >= len(result) {
-				result = append(result, map[string]string{})
-			}
-
-			result[index][matches[2]] = values[0]
-		}
-	}
-	return result
-}
-
 // HANDLERS //
 func uploadImageProject(ctx echo.Context) (err error) {
 	var id = ctx.FormValue("id")
@@ -411,6 +390,55 @@ func uploadImageProject(ctx echo.Context) (err error) {
 	if err != nil {
 		fmt.Println(err.Error())
 		return
+	}
+
+	res := &Response{
+		Status:  true,
+		Message: "OK",
+	}
+
+	return ctx.JSON(http.StatusOK, res)
+}
+
+func updateProject(ctx echo.Context) (err error) {
+	req := new(DataProject)
+
+	if err := ctx.Bind(req); err != nil {
+		return err
+	}
+
+	if err := ctx.Validate(req); err != nil {
+		return err
+	}
+
+	// CONNECT KE DB
+	db, err := config.Connect()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	defer db.Close()
+
+	q := "update cv_project  set nama = @P1, deskripsi = @P2, pic = @P3 where id = @P4"
+	_, err = db.Exec(q, sql.Named("P1", req.Nama), sql.Named("P2", req.Deskripsi), sql.Named("P3", req.PIC), sql.Named("P4", req.ID))
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	if len(req.Images) > 0 {
+		q := "update cv_project_dok set id_project = @P1, flag_thumb = @P2 where id_project = '' and no_urut = @P3"
+		for _, image := range req.Images {
+			_, err = db.Exec(q, sql.Named("P1", req.ID), sql.Named("P2", image.Flag), sql.Named("P3", image.No))
+
+			if err != nil {
+				fmt.Println(err.Error())
+				return
+			}
+		}
 	}
 
 	res := &Response{
