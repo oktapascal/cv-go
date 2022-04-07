@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -65,11 +66,16 @@ type (
 		Alamat  string `json:"alamat" validate:"required"`
 		Jabatan string `json:"jabatan" validate:"required,max=100"`
 	}
+	ImageProject struct {
+		Flag string `json:"flag"`
+		No   string `json:"no"`
+	}
 	DataProject struct {
 		ID        string `json:"id"`
 		Nama      string `json:"nama" validate:"required,max=200"`
 		Deskripsi string `json:"deskripsi" validate:"required"`
 		PIC       string `json:"pic" validate:"required,max=20"`
+		Images    *ImageProject
 	}
 )
 
@@ -278,6 +284,27 @@ func GenerateProject() string {
 	return fmt.Sprintf("%s%o", prefix, num)
 }
 
+func ParseFormCollection(r *http.Request, typeName string) []map[string]string {
+	var result []map[string]string
+	r.ParseForm()
+	for key, values := range r.Form {
+		re := regexp.MustCompile(typeName + "\\[([0-9]+)\\]\\[([a-zA-Z]+)\\]")
+		matches := re.FindStringSubmatch(key)
+
+		if len(matches) >= 3 {
+
+			index, _ := strconv.Atoi(matches[1])
+
+			for index >= len(result) {
+				result = append(result, map[string]string{})
+			}
+
+			result[index][matches[2]] = values[0]
+		}
+	}
+	return result
+}
+
 // HANDLERS //
 func uploadImageProject(ctx echo.Context) (err error) {
 	var id = ctx.FormValue("id")
@@ -285,7 +312,7 @@ func uploadImageProject(ctx echo.Context) (err error) {
 	var no = ctx.FormValue("no")
 	var filePath *string
 
-	var where = "and id_project is null"
+	var where = "and id_project = ''"
 	if id != "" && len(id) > 0 {
 		where = fmt.Sprintln("and id_project =", id)
 	}
@@ -303,6 +330,7 @@ func uploadImageProject(ctx echo.Context) (err error) {
 	q := fmt.Sprintln("select file_path from cv_project_dok where no_urut = @P1", where)
 
 	err = db.QueryRow(q, sql.Named("P1", no)).Scan(&filePath)
+	var errRow = err
 
 	if err != nil && err != sql.ErrNoRows {
 		fmt.Println(err.Error())
@@ -372,9 +400,9 @@ func uploadImageProject(ctx echo.Context) (err error) {
 		return err
 	}
 
-	if err == sql.ErrNoRows {
+	if errRow == sql.ErrNoRows {
 		q = "insert into cv_project_dok (id_project, flag_thumb, file_path, no_urut) values (@P1, @P2, @P3, @P4)"
-		_, err = db.Exec(q, sql.Named("P1", id), sql.Named("P2", fileName), sql.Named("P3", flag), sql.Named("P4", no))
+		_, err = db.Exec(q, sql.Named("P1", id), sql.Named("P2", flag), sql.Named("P3", fileName), sql.Named("P4", no))
 	} else {
 		q = fmt.Sprintln("update cv_project_dok set file_path = @P1 where no_urut = @P2", where)
 		_, err = db.Exec(q, sql.Named("P1", fileName), sql.Named("P2", no))
@@ -416,20 +444,22 @@ func storeProject(ctx echo.Context) (err error) {
 
 	id := GenerateProject()
 
-	q := "insert into cv_project (id, nama, deskripsi, pic) values (@P1, @P2, @P3, @P4)"
-	_, err = db.Exec(q, sql.Named("P1", id), sql.Named("P2", req.Nama), sql.Named("P3", req.Deskripsi), sql.Named("P4", req.PIC))
+	// q := "insert into cv_project (id, nama, deskripsi, pic) values (@P1, @P2, @P3, @P4)"
+	// _, err = db.Exec(q, sql.Named("P1", id), sql.Named("P2", req.Nama), sql.Named("P3", req.Deskripsi), sql.Named("P4", req.PIC))
 
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
+	// if err != nil {
+	// 	fmt.Println(err.Error())
+	// 	return
+	// }
 
-	q = "update cv_project_dok set id_project = @P1 where id_project is null"
-	_, err = db.Exec(q, sql.Named("P1", id))
+	for _, image := range ParseFormCollection(ctx.Request(), "Images") {
+		q := "update cv_project_dok set id_project = @P1 flag_thumb = @P2 where id_project = '' and no_urut = @P3"
+		_, err = db.Exec(q, sql.Named("P1", id), sql.Named("P2", image["flag"]), sql.Named("P3", image["no"]))
 
-	if err != nil {
-		fmt.Println(err.Error())
-		return
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
 	}
 
 	res := &Response{
