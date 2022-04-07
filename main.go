@@ -55,6 +55,7 @@ type (
 	ResponseData struct {
 		Status bool        `json:"status"`
 		Data   interface{} `json:"data"`
+		Detail interface{} `json:"detail"`
 	}
 	CustomValidator struct {
 		validator *validator.Validate
@@ -75,6 +76,12 @@ type (
 		Deskripsi string `json:"deskripsi" validate:"required"`
 		PIC       string `json:"pic" validate:"required,max=20"`
 		Images    []ImageProject
+	}
+	DataProjectImage struct {
+		ID   string `json:"id"`
+		Flag string `json:"flag"`
+		File string `json:"file"`
+		No   string `json:"no"`
 	}
 	DeleteProjectImage struct {
 		ID string `json:"id"`
@@ -742,7 +749,68 @@ func IndexProject(ctx echo.Context) (err error) {
 	}
 
 	return ctx.JSON(http.StatusOK, res)
+}
 
+func ProjectShow(ctx echo.Context) (err error) {
+	var id = ctx.Param("id")
+	// CONNECT KE DB
+	db, err := config.Connect()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	defer db.Close()
+
+	var data = DataProject{}
+
+	q := "select id, nama, deskripsi, pic from cv_project where id_project = @P1"
+
+	err = db.QueryRow(q, sql.Named("P1", id)).Scan(&data.ID, &data.Nama, &data.Deskripsi, &data.PIC)
+
+	if err != nil && err != sql.ErrNoRows {
+		fmt.Println(err.Error())
+		return
+	}
+
+	q = "select id_project, flag_thumb, file_path, no_urut from cv_project_dok where id_project = @P1"
+
+	rows, err := db.Query(q)
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var detail []DataProjectImage
+
+	for rows.Next() {
+		var each = DataProjectImage{}
+		var err = rows.Scan(&each.ID, &each.Flag, &each.File, &each.No)
+
+		if err != nil {
+			defer panic(err.Error())
+		}
+
+		detail = append(detail, each)
+	}
+
+	err = rows.Err()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	res := &ResponseData{
+		Status: true,
+		Data:   data,
+		Detail: detail,
+	}
+
+	return ctx.JSON(http.StatusOK, res)
 }
 
 func ShowImage(ctx echo.Context) (err error) {
