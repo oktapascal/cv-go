@@ -75,7 +75,7 @@ type (
 		Nama      string `json:"nama" validate:"required,max=200"`
 		Deskripsi string `json:"deskripsi" validate:"required"`
 		PIC       string `json:"pic" validate:"required,max=20"`
-		Images    *ImageProject
+		Images    []ImageProject
 	}
 )
 
@@ -444,21 +444,23 @@ func storeProject(ctx echo.Context) (err error) {
 
 	id := GenerateProject()
 
-	// q := "insert into cv_project (id, nama, deskripsi, pic) values (@P1, @P2, @P3, @P4)"
-	// _, err = db.Exec(q, sql.Named("P1", id), sql.Named("P2", req.Nama), sql.Named("P3", req.Deskripsi), sql.Named("P4", req.PIC))
+	q := "insert into cv_project (id, nama, deskripsi, pic) values (@P1, @P2, @P3, @P4)"
+	_, err = db.Exec(q, sql.Named("P1", id), sql.Named("P2", req.Nama), sql.Named("P3", req.Deskripsi), sql.Named("P4", req.PIC))
 
-	// if err != nil {
-	// 	fmt.Println(err.Error())
-	// 	return
-	// }
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
 
-	for _, image := range ParseFormCollection(ctx.Request(), "Images") {
-		q := "update cv_project_dok set id_project = @P1 flag_thumb = @P2 where id_project = '' and no_urut = @P3"
-		_, err = db.Exec(q, sql.Named("P1", id), sql.Named("P2", image["flag"]), sql.Named("P3", image["no"]))
+	if len(req.Images) > 0 {
+		q := "update cv_project_dok set id_project = @P1, flag_thumb = @P2 where id_project = '' and no_urut = @P3"
+		for _, image := range req.Images {
+			_, err = db.Exec(q, sql.Named("P1", id), sql.Named("P2", image.Flag), sql.Named("P3", image.No))
 
-		if err != nil {
-			fmt.Println(err.Error())
-			return
+			if err != nil {
+				fmt.Println(err.Error())
+				return
+			}
 		}
 	}
 
