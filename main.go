@@ -413,7 +413,7 @@ func DeleteImage(ctx echo.Context) (err error) {
 
 	var where = "and id_project = ''"
 	if id != "" && len(id) > 0 {
-		where = fmt.Sprintln("and id_project =", id)
+		where = fmt.Sprintf("and id_project = '%s'", id)
 	}
 
 	// CONNECT KE DB
@@ -486,7 +486,7 @@ func UploadImageProject(ctx echo.Context) (err error) {
 
 	var where = "and id_project = ''"
 	if id != "" && len(id) > 0 {
-		where = fmt.Sprintln("and id_project =", id)
+		where = fmt.Sprintf("and id_project = '%s'", id)
 	}
 
 	// CONNECT KE DB
