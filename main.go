@@ -407,18 +407,8 @@ func DeleteProject(ctx echo.Context) (err error) {
 }
 
 func DeleteImage(ctx echo.Context) (err error) {
-	req := new(DeleteProjectImage)
-
-	if err := ctx.Bind(req); err != nil {
-		return err
-	}
-
-	if err := ctx.Validate(req); err != nil {
-		return err
-	}
-
-	var id = req.ID
-	var no = req.No
+	var id = ctx.Param("id")
+	var no = ctx.Param("no")
 	var filePath *string
 
 	var where = "and id_project = ''"
@@ -473,7 +463,7 @@ func DeleteImage(ctx echo.Context) (err error) {
 
 	q = fmt.Sprintln("delete from cv_project_dok where no_urut = @P1", where)
 
-	_, err = db.Exec(q, sql.Named("P1", req.No))
+	_, err = db.Exec(q, sql.Named("P1", no))
 
 	if err != nil {
 		fmt.Println(err.Error())
