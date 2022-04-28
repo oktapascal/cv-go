@@ -38,6 +38,9 @@ var AWS_REGION string
 var AWS_ACCESS_KEY string
 var AWS_SECRET_ACCESS_KEY string
 
+const CSRFTokenHeader = "X-CSRF-TOKEN"
+const CSRFKey = "csrf"
+
 // TYPE
 type (
 	User struct {
@@ -87,6 +90,7 @@ type (
 		ID string `json:"id"`
 		No string `json:"no" validate:"required"`
 	}
+	M map[string]interface{}
 )
 
 func main() {
@@ -106,6 +110,10 @@ func main() {
 	// MIDDLEWARE
 	server.Use(middleware.Logger())
 	server.Use(middleware.Recover())
+	server.Use(middleware.CSRFWithConfig(middleware.CSRFConfig{
+		TokenLookup: "header:" + CSRFTokenHeader,
+		ContextKey:  CSRFKey,
+	}))
 
 	// CONNECT TO AWS
 	session := ConnectToAws()
@@ -134,7 +142,8 @@ func main() {
 		ctx.Logger().Error(report)
 		ctx.JSON(report.Code, report)
 	}
-
+	// GENERATE CSRF
+	server.GET("/csrf", generateCSRF)
 	// LOGIN
 	server.POST("/login", Login)
 	server.POST("/logout", Logout)
@@ -301,6 +310,17 @@ func GenerateProject() string {
 }
 
 // HANDLERS //
+func generateCSRF(ctx echo.Context) (err error) {
+	data := make(M)
+	data[CSRFKey] = ctx.Get(CSRFKey)
+
+	res := &ResponseData{
+		Status: true,
+		Data:   data,
+	}
+	return ctx.JSON(http.StatusOK, res)
+}
+
 func CheckToken(ctx echo.Context) (err error) {
 	res := &Response{
 		Status:  true,
